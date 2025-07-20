@@ -3,6 +3,7 @@ import json
 import re
 from datetime import datetime
 import os
+import requests
 
 app = Flask(__name__)
 
@@ -188,6 +189,40 @@ class MicrofinanceBot:
 # Initialize bot
 bot = MicrofinanceBot()
 
+def send_facebook_message(recipient_id, message_text, quick_replies=None):
+    """Send message to Facebook Messenger"""
+    page_access_token = os.environ.get('FACEBOOK_PAGE_ACCESS_TOKEN')
+    
+    if not page_access_token:
+        print("ERROR: FACEBOOK_PAGE_ACCESS_TOKEN not set")
+        return False
+    
+    url = f"https://graph.facebook.com/v18.0/me/messages?access_token={page_access_token}"
+    
+    payload = {
+        "recipient": {"id": recipient_id},
+        "message": {"text": message_text}
+    }
+    
+    # Add quick replies if provided
+    if quick_replies:
+        payload["message"]["quick_replies"] = [
+            {"content_type": "text", "title": reply, "payload": reply}
+            for reply in quick_replies
+        ]
+    
+    try:
+        response = requests.post(url, json=payload)
+        if response.status_code == 200:
+            print(f"Message sent successfully to {recipient_id}")
+            return True
+        else:
+            print(f"Failed to send message: {response.status_code} - {response.text}")
+            return False
+    except Exception as e:
+        print(f"Error sending message: {str(e)}")
+        return False
+
 @app.route('/')
 def home():
     """Serve the chatbot interface"""
@@ -225,6 +260,17 @@ def test():
         'timestamp': datetime.now().isoformat()
     })
 
+@app.route('/debug/facebook')
+def debug_facebook():
+    """Debug endpoint to check Facebook configuration"""
+    token = os.environ.get('FACEBOOK_PAGE_ACCESS_TOKEN')
+    return jsonify({
+        'has_token': bool(token),
+        'token_length': len(token) if token else 0,
+        'token_preview': token[:10] + '...' if token else None,
+        'timestamp': datetime.now().isoformat()
+    })
+
 # Facebook Messenger webhook endpoints
 @app.route('/facebook/webhook', methods=['GET'])
 def facebook_webhook_verify():
@@ -257,8 +303,8 @@ def facebook_webhook():
                         # Process message through bot
                         response = bot.process_message(message_text, sender_id)
                         
-                        # Send response back to Facebook (you'll need to implement this)
-                        # send_facebook_message(sender_id, response['text'])
+                        # Send response back to Facebook
+                        send_facebook_message(sender_id, response['text'], response.get('quick_replies'))
                         
             return 'OK', 200
         else:
